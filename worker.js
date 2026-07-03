@@ -28,6 +28,7 @@ export default {
     const db = env.DB;
 
     try {
+      // ── SETTINGS ──────────────────────────────────────────────
       if (path === '/api/settings' && request.method === 'GET') {
         const key = url.searchParams.get('key');
         if (!key) return err('key required');
@@ -39,13 +40,11 @@ export default {
         const body = await request.json();
         const { key, value } = body;
         if (!key) return err('key required');
-        await db.prepare(`
-          INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
-          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-        `).bind(key, value, Date.now()).run();
+        await db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).bind(key, value, Date.now()).run();
         return json({ success: true });
       }
 
+      // ── DAY TYPE ──────────────────────────────────────────────
       if (path === '/api/day-type' && request.method === 'GET') {
         const date = url.searchParams.get('date');
         if (!date) return err('date required');
@@ -57,12 +56,11 @@ export default {
         const body = await request.json();
         const { date, dayType } = body;
         if (!date || !dayType) return err('date and dayType required');
-        await db.prepare(
-          'INSERT INTO day_type_log (date, day_type, created_at) VALUES (?, ?, ?) ON CONFLICT(date) DO UPDATE SET day_type = excluded.day_type'
-        ).bind(date, dayType, Date.now()).run();
+        await db.prepare('INSERT INTO day_type_log (date, day_type, created_at) VALUES (?, ?, ?) ON CONFLICT(date) DO UPDATE SET day_type = excluded.day_type').bind(date, dayType, Date.now()).run();
         return json({ success: true });
       }
 
+      // ── WORKOUT HISTORY ───────────────────────────────────────
       if (path === '/api/workout-history' && request.method === 'GET') {
         const exerciseId = url.searchParams.get('exerciseId');
         let results;
@@ -89,6 +87,7 @@ export default {
         return json({ success: true });
       }
 
+      // ── WORKOUT STATE ─────────────────────────────────────────
       if (path === '/api/workout-state' && request.method === 'GET') {
         const row = await db.prepare('SELECT * FROM workout_state WHERE id = 1').first();
         if (!row) return json({ checked: {}, plannedExercises: {}, loadingPattern: {}, customExercises: [], nameOverrides: {} });
@@ -103,17 +102,7 @@ export default {
 
       if (path === '/api/workout-state' && request.method === 'POST') {
         const body = await request.json();
-        await db.prepare(`
-          INSERT INTO workout_state (id, checked_json, planned_exercises_json, loading_pattern_json, custom_exercises_json, name_overrides_json, updated_at)
-          VALUES (1, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET
-            checked_json = excluded.checked_json,
-            planned_exercises_json = excluded.planned_exercises_json,
-            loading_pattern_json = excluded.loading_pattern_json,
-            custom_exercises_json = excluded.custom_exercises_json,
-            name_overrides_json = excluded.name_overrides_json,
-            updated_at = excluded.updated_at
-        `).bind(
+        await db.prepare(`INSERT INTO workout_state (id, checked_json, planned_exercises_json, loading_pattern_json, custom_exercises_json, name_overrides_json, updated_at) VALUES (1, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET checked_json = excluded.checked_json, planned_exercises_json = excluded.planned_exercises_json, loading_pattern_json = excluded.loading_pattern_json, custom_exercises_json = excluded.custom_exercises_json, name_overrides_json = excluded.name_overrides_json, updated_at = excluded.updated_at`).bind(
           JSON.stringify(body.checked || {}),
           JSON.stringify(body.plannedExercises || {}),
           JSON.stringify(body.loadingPattern || {}),
@@ -124,6 +113,7 @@ export default {
         return json({ success: true });
       }
 
+      // ── MEAL LOG ──────────────────────────────────────────────
       if (path === '/api/meal-log' && request.method === 'GET') {
         const date = url.searchParams.get('date');
         if (date) {
@@ -133,9 +123,7 @@ export default {
         } else {
           const results = await db.prepare('SELECT * FROM daily_meal_log ORDER BY date DESC LIMIT 30').all();
           const logs = {};
-          results.results.forEach(row => {
-            logs[row.date] = { dayType: row.day_type, meals: JSON.parse(row.meals_json) };
-          });
+          results.results.forEach(row => { logs[row.date] = { dayType: row.day_type, meals: JSON.parse(row.meals_json) }; });
           return json({ logs });
         }
       }
@@ -145,17 +133,11 @@ export default {
         const { date, dayType, meals } = body;
         if (!date || !dayType || !meals) return err('date, dayType, meals required');
         const now = Date.now();
-        await db.prepare(`
-          INSERT INTO daily_meal_log (date, day_type, meals_json, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT(date) DO UPDATE SET
-            day_type = excluded.day_type,
-            meals_json = excluded.meals_json,
-            updated_at = excluded.updated_at
-        `).bind(date, dayType, JSON.stringify(meals), now, now).run();
+        await db.prepare(`INSERT INTO daily_meal_log (date, day_type, meals_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(date) DO UPDATE SET day_type = excluded.day_type, meals_json = excluded.meals_json, updated_at = excluded.updated_at`).bind(date, dayType, JSON.stringify(meals), now, now).run();
         return json({ success: true });
       }
 
+      // ── MEAL CHECKED ──────────────────────────────────────────
       if (path === '/api/meal-checked' && request.method === 'GET') {
         const date = url.searchParams.get('date');
         if (!date) return err('date required');
@@ -169,13 +151,11 @@ export default {
         const body = await request.json();
         const { date, mealKey, checked } = body;
         if (!date || mealKey === undefined) return err('date and mealKey required');
-        await db.prepare(`
-          INSERT INTO meal_checked (date, meal_key, checked) VALUES (?, ?, ?)
-          ON CONFLICT(date, meal_key) DO UPDATE SET checked = excluded.checked
-        `).bind(date, mealKey, checked ? 1 : 0).run();
+        await db.prepare(`INSERT INTO meal_checked (date, meal_key, checked) VALUES (?, ?, ?) ON CONFLICT(date, meal_key) DO UPDATE SET checked = excluded.checked`).bind(date, mealKey, checked ? 1 : 0).run();
         return json({ success: true });
       }
 
+      // ── FOOD LIBRARY ──────────────────────────────────────────
       if (path === '/api/food-library' && request.method === 'GET') {
         const results = await db.prepare('SELECT * FROM food_library ORDER BY created_at DESC').all();
         return json({ foods: results.results });
@@ -185,9 +165,7 @@ export default {
         const body = await request.json();
         const { name, serving, protein, carbs, fat, fiber, sugar, sodium } = body;
         if (!name) return err('name required');
-        await db.prepare(
-          'INSERT INTO food_library (name, serving, protein, carbs, fat, fiber, sugar, sodium, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        ).bind(name, serving || '', protein||0, carbs||0, fat||0, fiber||0, sugar||0, sodium||0, Date.now()).run();
+        await db.prepare('INSERT INTO food_library (name, serving, protein, carbs, fat, fiber, sugar, sodium, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(name, serving || '', protein||0, carbs||0, fat||0, fiber||0, sugar||0, sodium||0, Date.now()).run();
         return json({ success: true });
       }
 
@@ -197,12 +175,11 @@ export default {
         return json({ success: true });
       }
 
+      // ── REMINDERS ─────────────────────────────────────────────
       if (path === '/api/reminders' && request.method === 'GET') {
         const results = await db.prepare('SELECT * FROM reminder_settings').all();
         const settings = {};
-        results.results.forEach(row => {
-          settings[row.reminder_key] = { enabled: !!row.enabled, minsBefore: row.mins_before };
-        });
+        results.results.forEach(row => { settings[row.reminder_key] = { enabled: !!row.enabled, minsBefore: row.mins_before }; });
         return json({ settings });
       }
 
@@ -210,10 +187,33 @@ export default {
         const body = await request.json();
         const { reminderKey, enabled, minsBefore } = body;
         if (!reminderKey) return err('reminderKey required');
-        await db.prepare(`
-          INSERT INTO reminder_settings (reminder_key, enabled, mins_before, updated_at) VALUES (?, ?, ?, ?)
-          ON CONFLICT(reminder_key) DO UPDATE SET enabled = excluded.enabled, mins_before = excluded.mins_before, updated_at = excluded.updated_at
-        `).bind(reminderKey, enabled ? 1 : 0, minsBefore || 5, Date.now()).run();
+        await db.prepare(`INSERT INTO reminder_settings (reminder_key, enabled, mins_before, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(reminder_key) DO UPDATE SET enabled = excluded.enabled, mins_before = excluded.mins_before, updated_at = excluded.updated_at`).bind(reminderKey, enabled ? 1 : 0, minsBefore || 5, Date.now()).run();
+        return json({ success: true });
+      }
+
+      // ── WEIGHT LOG ────────────────────────────────────────────
+      if (path === '/api/weight-log' && request.method === 'GET') {
+        const results = await db.prepare('SELECT * FROM weight_log ORDER BY date ASC').all();
+        return json({ entries: results.results });
+      }
+
+      if (path === '/api/weight-log' && request.method === 'POST') {
+        const body = await request.json();
+        const { date, weight, bmi } = body;
+        if (!date || !weight) return err('date and weight required');
+        await db.prepare(`INSERT INTO weight_log (date, weight, bmi, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(date) DO UPDATE SET weight = excluded.weight, bmi = excluded.bmi`).bind(date, weight, bmi || null, Date.now()).run();
+        return json({ success: true });
+      }
+
+      // ── WEEK SCHEDULE ─────────────────────────────────────────
+      if (path === '/api/week-schedule' && request.method === 'GET') {
+        const row = await db.prepare("SELECT value FROM app_settings WHERE key = 'week_schedule'").first();
+        return json({ schedule: row ? JSON.parse(row.value) : null });
+      }
+
+      if (path === '/api/week-schedule' && request.method === 'POST') {
+        const body = await request.json();
+        await db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES ('week_schedule', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).bind(JSON.stringify(body), Date.now()).run();
         return json({ success: true });
       }
 
