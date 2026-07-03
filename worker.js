@@ -28,6 +28,24 @@ export default {
     const db = env.DB;
 
     try {
+      if (path === '/api/settings' && request.method === 'GET') {
+        const key = url.searchParams.get('key');
+        if (!key) return err('key required');
+        const row = await db.prepare('SELECT * FROM app_settings WHERE key = ?').bind(key).first();
+        return json({ value: row ? row.value : null });
+      }
+
+      if (path === '/api/settings' && request.method === 'POST') {
+        const body = await request.json();
+        const { key, value } = body;
+        if (!key) return err('key required');
+        await db.prepare(`
+          INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+        `).bind(key, value, Date.now()).run();
+        return json({ success: true });
+      }
+
       if (path === '/api/day-type' && request.method === 'GET') {
         const date = url.searchParams.get('date');
         if (!date) return err('date required');
