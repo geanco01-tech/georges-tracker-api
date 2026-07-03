@@ -83,4 +83,125 @@ export default {
         });
       }
 
-      if (path === '/api/workout-stat
+      if (path === '/api/workout-state' && request.method === 'POST') {
+        const body = await request.json();
+        await db.prepare(`
+          INSERT INTO workout_state (id, checked_json, planned_exercises_json, loading_pattern_json, custom_exercises_json, name_overrides_json, updated_at)
+          VALUES (1, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            checked_json = excluded.checked_json,
+            planned_exercises_json = excluded.planned_exercises_json,
+            loading_pattern_json = excluded.loading_pattern_json,
+            custom_exercises_json = excluded.custom_exercises_json,
+            name_overrides_json = excluded.name_overrides_json,
+            updated_at = excluded.updated_at
+        `).bind(
+          JSON.stringify(body.checked || {}),
+          JSON.stringify(body.plannedExercises || {}),
+          JSON.stringify(body.loadingPattern || {}),
+          JSON.stringify(body.customExercises || []),
+          JSON.stringify(body.nameOverrides || {}),
+          Date.now()
+        ).run();
+        return json({ success: true });
+      }
+
+      if (path === '/api/meal-log' && request.method === 'GET') {
+        const date = url.searchParams.get('date');
+        if (date) {
+          const row = await db.prepare('SELECT * FROM daily_meal_log WHERE date = ?').bind(date).first();
+          if (!row) return json({ log: null });
+          return json({ log: { date: row.date, dayType: row.day_type, meals: JSON.parse(row.meals_json) } });
+        } else {
+          const results = await db.prepare('SELECT * FROM daily_meal_log ORDER BY date DESC LIMIT 30').all();
+          const logs = {};
+          results.results.forEach(row => {
+            logs[row.date] = { dayType: row.day_type, meals: JSON.parse(row.meals_json) };
+          });
+          return json({ logs });
+        }
+      }
+
+      if (path === '/api/meal-log' && request.method === 'POST') {
+        const body = await request.json();
+        const { date, dayType, meals } = body;
+        if (!date || !dayType || !meals) return err('date, dayType, meals required');
+        const now = Date.now();
+        await db.prepare(`
+          INSERT INTO daily_meal_log (date, day_type, meals_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(date) DO UPDATE SET
+            day_type = excluded.day_type,
+            meals_json = excluded.meals_json,
+            updated_at = excluded.updated_at
+        `).bind(date, dayType, JSON.stringify(meals), now, now).run();
+        return json({ success: true });
+      }
+
+      if (path === '/api/meal-checked' && request.method === 'GET') {
+        const date = url.searchParams.get('date');
+        if (!date) return err('date required');
+        const results = await db.prepare('SELECT * FROM meal_checked WHERE date = ?').bind(date).all();
+        const checked = {};
+        results.results.forEach(row => { checked[row.meal_key] = !!row.checked; });
+        return json({ checked });
+      }
+
+      if (path === '/api/meal-checked' && request.method === 'POST') {
+        const body = await request.json();
+        const { date, mealKey, checked } = body;
+        if (!date || mealKey === undefined) return err('date and mealKey required');
+        await db.prepare(`
+          INSERT INTO meal_checked (date, meal_key, checked) VALUES (?, ?, ?)
+          ON CONFLICT(date, meal_key) DO UPDATE SET checked = excluded.checked
+        `).bind(date, mealKey, checked ? 1 : 0).run();
+        return json({ success: true });
+      }
+
+      if (path === '/api/food-library' && request.method === 'GET') {
+        const results = await db.prepare('SELECT * FROM food_library ORDER BY created_at DESC').all();
+        return json({ foods: results.results });
+      }
+
+      if (path === '/api/food-library' && request.method === 'POST') {
+        const body = await request.json();
+        const { name, serving, protein, carbs, fat, fiber, sugar, sodium } = body;
+        if (!name) return err('name required');
+        await db.prepare(
+          'INSERT INTO food_library (name, serving, protein, carbs, fat, fiber, sugar, sodium, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).bind(name, serving || '', protein||0, carbs||0, fat||0, fiber||0, sugar||0, sodium||0, Date.now()).run();
+        return json({ success: true });
+      }
+
+      if (path.startsWith('/api/food-library/') && request.method === 'DELETE') {
+        const id = path.split('/').pop();
+        await db.prepare('DELETE FROM food_library WHERE id = ?').bind(id).run();
+        return json({ success: true });
+      }
+
+      if (path === '/api/reminders' && request.method === 'GET') {
+        const results = await db.prepare('SELECT * FROM reminder_settings').all();
+        const settings = {};
+        results.results.forEach(row => {
+          settings[row.reminder_key] = { enabled: !!row.enabled, minsBefore: row.mins_before };
+        });
+        return json({ settings });
+      }
+
+      if (path === '/api/reminders' && request.method === 'POST') {
+        const body = await request.json();
+        const { reminderKey, enabled, minsBefore } = body;
+        if (!reminderKey) return err('reminderKey required');
+        await db.prepare(`
+          INSERT INTO reminder_settings (reminder_key, enabled, mins_before, updated_at) VALUES (?, ?, ?, ?)
+          ON CONFLICT(reminder_key) DO UPDATE SET enabled = excluded.enabled, mins_before = excluded.mins_before, updated_at = excluded.updated_at
+        `).bind(reminderKey, enabled ? 1 : 0, minsBefore || 5, Date.now()).run();
+        return json({ success: true });
+      }
+
+      return err('Not found', 404);
+    } catch (e) {
+      return err('Server error: ' + e.message, 500);
+    }
+  },
+};
